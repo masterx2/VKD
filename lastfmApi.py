@@ -17,7 +17,7 @@ class lfmAPI:
                   search_string + \
                   '&api_key=' + \
                   self.api_key
-        # print ('API Request >>> %s' % (request[41:request.find('&api')]))
+        print ('API Request >>> %s' % (request[41:request.find('&api')]))
         return urllib2.urlopen(request).read()
 
     def artist_search(self, artist):
@@ -37,20 +37,12 @@ class lfmAPI:
             albums.append(element[0].text)
         return albums
 
-    def getAlbumCovers(self, artist, album):
-        artist = artist.encode('utf-8')
-        album = album.encode('utf-8')
-        covers = {}
-        tracks_tree = et.fromstring(self.api_request('album.getinfo', '&artist=' + urllib2.quote(artist) + \
-                                                                      '&album=' + urllib2.quote(album)))
-        for element in tracks_tree.findall('./album/image'):
-            covers[element.items()[0][1]] = element.text
-        return covers
-
     def getAlbumInfo(self, artist, album):
         artist = artist.encode('utf-8')
         album = album.encode('utf-8')
         tracks = []
+        covers = {}
+
         tracks_tree = et.fromstring(self.api_request('album.getinfo', '&artist=' + urllib2.quote(artist) + \
                                                                       '&album=' + urllib2.quote(album)))
         try:
@@ -60,7 +52,12 @@ class lfmAPI:
 
         for element in tracks_tree.findall('./album/tracks/track'):
             tracks.append([element.items()[0][1], element[0].text, element[1].text])
-        return tracks, release_date
+
+        for element in tracks_tree.findall('./album/image'):
+                covers[element.items()[0][1]] = element.text
+
+        return tracks, release_date, covers
+
 
     def getTopTags(self, artist):
         artist = artist.encode('utf-8')

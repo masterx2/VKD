@@ -11,14 +11,14 @@ import ConfigParser
 from mbrainzApi import mbzAPI
 from lastfmApi import lfmAPI
 from unidecode import unidecode
-from vkdtools import tomin, initVk, parseVk, getWorkdir, DownloadPrepare, ProcessFile
+from vkdtools import tomin, initVk, parseVk, get_links, getWorkdir, DownloadPrepare, ProcessFile
 
 sysname = re.compile(r'[!/\\:;*?«<>|]+')
 
 # Init
 
 # Пользователь выбирает интересуещего его исполнителя
-user_artist = u'Noize MC'
+user_artist = u'foo'
 
 Start_Dir = os.getcwdu()
 config = ConfigParser.ConfigParser()
@@ -39,27 +39,33 @@ br = initVk(login, password)
 artists = lfm.artist_search(user_artist) # Список найденых исполнителей
 albums = lfm.getTopAlbums(artists[0]) # Список альбомов испослнителя
 # Словарь { 'тип обложки' : 'ссылка' } типы [small|large|medium|mega|extralarge]
-covers = lfm.getAlbumCovers(artists[0], albums[0])
 # Список треков в формате [['номер трека', 'имя трека', 'длительность в секундах'], ....]
 # Дата релиза в формате datetime объекта
-tracks, release_date = lfm.getAlbumInfo(artists[0], albums[0])
+tracks, release_date, covers = lfm.getAlbumInfo(artists[0], albums[0])
 tags = lfm.getTopTags(artists[0]) # Список тегов исполнителя
 
 selected_Artist = artists[0]
 selected_Album = albums[0]
+selected_Track = tracks[0]
 
 if release_date:
     release_Year = release_date.year
 else:
     release_Year = ''
 
-
 # Подготовка к скачиванию, необходимо передать имя исполнителя, название альбома, обложки, год релиза
 # Если будет передан год то к началу названия папки с альбомом добавится [XXXX]
-DownloadPrepare(artists[0], albums[0], covers, release_Year)
+# DownloadPrepare(artists[0], albums[0], covers, release_Year)
+
+links = get_links(selected_Artist, selected_Track[1], int(selected_Track[2]), br, 10, 1)
+if links:
+    for link in links:
+        print link
+else: print 'Nothing Found!'
+
+sys.exit()
 
 # Цикл по списку треков
-
 for selected_Track in tracks:
     # VK Parse, Парсеру необходимо передать экземпляр браузера и строку поиска
     # Ответ парсера список в формате [['исполнитель', 'имя трека', 'длительность в секундах', 'ссылка на файл'], ....]

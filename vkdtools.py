@@ -50,6 +50,7 @@ def parseVk(search, br):
     parser = HTMLParser.HTMLParser()
     un = parser.unescape
     url = 'http://m.vk.com/audio?act=search&q=' + urllib2.quote(search.encode('utf-8'))
+    print 'VKP Request >>>', url
     response = br.open(url)
     html = un(response.read().decode('utf-8')).replace('<em>', '').replace('</em>', '')
 
@@ -67,18 +68,25 @@ def parseVk(search, br):
 
 
 def get_links(artist, track, time, br, listsize, timerange):
-    out_list = []
+    time_check_list = []
+
     vksearch = '%s - %s' % (artist, track)
+    print 'Search for', vksearch, 'time:', tomin(time)
     vkout = parseVk(vksearch, br)
-    for item in vkout:
-        if item[2] != '':
-            if int(item[2]) in range(time - timerange, time + timerange + 1):
-                out_list.append((item[2], item[3]))
-    if out_list:
-        if len(out_list) > listsize: out_list = out_list[:listsize]
-        final_list = addBitrate(out_list)
-        return final_list
-    else: return None
+
+    while not time_check_list:
+        print 'TimeRange:', timerange, 'sec'
+        for item in vkout:
+            if item[2] != '':
+                if int(item[2]) in range(time - timerange, time + timerange + 1):
+                    time_check_list.append(item)
+        timerange += 1
+        if timerange > 100: return None
+
+    out_list = addBitrate(time_check_list)
+
+    if len(out_list) >= listsize: out_list = out_list[:listsize]
+    return out_list
 
 
 def DownloadPrepare(artist, album, covers, year=''):
@@ -91,7 +99,7 @@ def DownloadPrepare(artist, album, covers, year=''):
 
     # Create Album Directory and proceed:
     if year and year != '':
-        folder_prefix = '[%d] ' % year
+        folder_prefix = '[%s] ' % year
     else:
         folder_prefix = ''
 
@@ -114,9 +122,76 @@ def DownloadPrepare(artist, album, covers, year=''):
 
 
 
-def ProcessFile(filename, url, id3tags):
-    downloadFile(url, filename)
-    writeTag(filename, id3tags)
+def ProcessFile(track, status, br):
+
+    def del_temp():
+        print '[Deleting other candidates]'
+        for item in glob.glob('[1-9]*.mp3'):
+            print '  ...%s' % item.split()[0]
+            os.remove(item)
+        print 'Done.'
+        return True
+
+    id3tags = (track[0], # Track Number
+               track[1], # Song Name
+               status['artist'], # Artist
+               status['album'], # Album Name
+               status['year'], # Year
+               status['tag'], # Artist Tag
+               '' # Comment
+              )
+    filename = sysname.sub('', '[%s] %s - %s.mp3' % (track[0], status['artist'], track[1]))
+
+    del_temp()
+
+    if os.path.exists(filename):
+        print 'File already exists, skipping..'
+        return True
+
+    links = get_links(status['artist'], track[1], int(track[2]), br, status['listsize'], status['timerange'])
+
+    if not links: return None
+
+    download_threads = []
+    rated_files = []
+    file_index = 1
+
+    for item in links:
+        download_file = u'%d %s' % (file_index, filename)
+        download_threads.append(threading.Thread(target = downloadFile, args=(item[3], download_file)))
+        file_index += 1
+
+    print '[...Downloading Candidate Files...]'
+    map(lambda x: x.start(), download_threads)
+    map(lambda x: x.join(), download_threads)
+    print '[Done]\n'
+
+    for mp3_file in glob.glob('[1-9]*.mp3'):
+        deleteTag(mp3_file)
+        acousticId = list(acoustid.match('FDaQARn2', mp3_file.encode("UTF-8")))
+        print acousticId
+        if acousticId:
+            rated_files.append([mp3_file, acousticId[0][0] * 100.0, acousticId[0][3], acousticId[0][2], item[1]])
+        else:
+            os.remove(mp3_file)
+
+    if rated_files:
+        print rated_files
+        for file in rated_files:
+            prefix = file[0].split()[0]
+            if file[1] >= status['score']:
+                os.rename(file[0], filename)
+                writeTag(filename, id3tags)
+                del_temp()
+                return True
+
+        file = sorted(rated_files, key = lambda x: x[1])[::-1][0]
+
+        os.rename(file[0], filename)
+        writeTag(filename, id3tags)
+        del_temp()
+        return True
+    else: print 'Something really bad happened!'
 
 def getWorkdir():
     print ('Input work directory path, choose defaults from list\nor leave blank for current directory')
@@ -166,20 +241,22 @@ def tomin(duration):
     except:
         return duration
 
-def getBitrate(url, time):
+def getBitrate(time, url):
     if int(time) <= 0:
         return 0
     else:
         urlfile = urllib2.urlopen(url)
+        print 'BIT Request >>>', url, time,
         totalBytes = int(urlfile.info().getheader('Content-Length').strip())
+        print totalBytes / 1000.0, 'Kilobytes'
         return ((totalBytes * 8) / int(time)) / 1000
 
 
-def addBitrate(url_list):
+def addBitrate(list):
     out = []
-    for item in url_list:
-        out.append([item[1], getBitrate(item[1], item[0])])
-    return sorted(out, key = lambda x: x[1])[::-1]
+    for item in list:
+        out.append([item[0], item[1], item[2], item[3], getBitrate(item[2], item[3])])
+    return sorted(out, key = lambda x: x[4])[::-1]
 
 
 def downloadFile(fileurl, filename):
