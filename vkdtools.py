@@ -59,13 +59,12 @@ def parseVk(search, br):
     tracks = tracks_find.findall(html)
     mp3s = mp3s_find.findall(html)
 
-    if len(times) == len(artists) == len(tracks) == len(mp3s):
-        vkinfo = zip(artists, tracks, times, mp3s)
-        return vkinfo
-    else:
-        print 'Bad VK Parse'
-        raise RuntimeError
-
+    vkinfo = zip(artists, tracks, times, mp3s)
+    
+    for item in vkinfo:
+        print item
+    
+    return vkinfo
 
 def get_links(artist, track, time, br, listsize, timerange):
     time_check_list = []
